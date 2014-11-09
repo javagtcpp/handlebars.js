@@ -17,33 +17,53 @@ statement
   | block -> $1
   | rawBlock -> $1
   | partial -> $1
-  | CONTENT -> new yy.ContentNode($1, @$)
+  | content -> $1
   | COMMENT -> new yy.CommentNode(yy.stripComment($1), yy.stripFlags($1, $1), @$)
   ;
 
+content
+  : CONTENT -> new yy.ContentNode($1, @$)
+  ;
+
 rawBlock
-  : openRawBlock CONTENT END_RAW_BLOCK -> new yy.RawBlockNode($1, $2, $3, @$)
+  : openRawBlock content END_RAW_BLOCK -> yy.prepareRawBlock($1, $2, $3, @$)
   ;
 
 openRawBlock
-  : OPEN_RAW_BLOCK sexpr CLOSE_RAW_BLOCK -> new yy.MustacheNode($2, null, '', '', @$)
+  : OPEN_RAW_BLOCK sexpr CLOSE_RAW_BLOCK -> { sexpr: $2 }
   ;
 
 block
-  : openBlock program inverseAndProgram? closeBlock -> yy.prepareBlock($1, $2, $3, $4, false, @$)
+  : openBlock program inverseChain? closeBlock -> yy.prepareBlock($1, $2, $3, $4, false, @$)
   | openInverse program inverseAndProgram? closeBlock -> yy.prepareBlock($1, $2, $3, $4, true, @$)
   ;
 
 openBlock
-  : OPEN_BLOCK sexpr CLOSE -> new yy.MustacheNode($2, null, $1, yy.stripFlags($1, $3), @$)
+  : OPEN_BLOCK sexpr CLOSE -> { sexpr: $2, strip: yy.stripFlags($1, $3) }
   ;
 
 openInverse
-  : OPEN_INVERSE sexpr CLOSE -> new yy.MustacheNode($2, null, $1, yy.stripFlags($1, $3), @$)
+  : OPEN_INVERSE sexpr CLOSE -> { sexpr: $2, strip: yy.stripFlags($1, $3) }
+  ;
+
+openInverseChain
+  : OPEN_INVERSE_CHAIN sexpr CLOSE -> new yy.MustacheNode($2, null, $1, yy.stripFlags($1, $3), @$)
   ;
 
 inverseAndProgram
   : INVERSE program -> { strip: yy.stripFlags($1, $1), program: $2 }
+  ;
+
+inverseChain
+  : openInverseChain program inverseChain? {
+    var inverse = yy.prepareBlock($1, $2, $3, $3, false, @$),
+        program = new yy.ProgramNode(yy.prepareProgram([inverse]), {}, @$);
+
+    program.inverse = inverse;
+
+    $$ = { strip: $1.strip, program: program, chain: true };
+  }
+  | inverseAndProgram -> $1
   ;
 
 closeBlock
